@@ -19,6 +19,7 @@ mod call_cbmc_viewer;
 mod call_display_results;
 mod call_goto_cc;
 mod call_goto_instrument;
+mod call_kanillian;
 mod call_single_file;
 mod call_symtab;
 mod metadata;
@@ -29,6 +30,7 @@ fn main() -> Result<()> {
     match determine_invocation_type(Vec::from_iter(std::env::args_os())) {
         InvocationType::CargoKani(args) => cargokani_main(args),
         InvocationType::Standalone => standalone_main(),
+        InvocationType::Kanillian => kanillian_main(),
     }
 }
 
@@ -130,6 +132,33 @@ fn standalone_main() -> Result<()> {
     ctx.print_final_summary(&harnesses, &failed_harnesses)
 }
 
+fn kanillian_main() -> Result<()> {
+    let args = std::env::args_os().filter(|x| x != &OsString::from("--gillian"));
+    let args = args::StandaloneArgs::from_iter(args);
+    args.validate();
+    let ctx = session::KaniSession::new(args.common_opts)?;
+
+    let outputs = ctx.compile_single_rust_file(&args.input)?;
+    if ctx.args.only_codegen {
+        return Ok(());
+    }
+
+    let metadata = ctx.collect_kani_metadata(&[outputs.metadata])?;
+    let harnesses = ctx.determine_targets(&metadata)?;
+    let kstats_file = util::alter_extension(&args.input, "stats.json");
+    for harness in harnesses {
+        let gil_file = util::alter_extension(&args.input, &format!("{}.gil", harness.pretty_name));
+        ctx.call_kanillian(
+            &outputs.symtab,
+            harness.mangled_name,
+            Some(&gil_file),
+            Some(&kstats_file),
+        )?;
+    }
+
+    Ok(())
+}
+
 impl KaniSession {
     fn check_harness(
         &self,
@@ -185,6 +214,7 @@ impl KaniSession {
 enum InvocationType {
     CargoKani(Vec<OsString>),
     Standalone,
+    Kanillian,
 }
 
 /// Peeks at command line arguments to determine if we're being invoked as 'kani' or 'cargo-kani'
@@ -201,7 +231,11 @@ fn determine_invocation_type(mut args: Vec<OsString>) -> InvocationType {
     // Case 2: if 'kani' is the name we're invoked as, then we're being invoked standalone
     // Note: we care about argv0 here, NOT std::env::current_exe(), as the later will be resolved
     else if Some("kani".into()) == exe {
-        InvocationType::Standalone
+        if args.contains(&OsString::from("--gillian")) {
+            InvocationType::Kanillian
+        } else {
+            InvocationType::Standalone
+        }
     }
     // Case 3: if 'cargo-kani' is the name we're invoked as, then the user is directly invoking
     // 'cargo-kani' instead of 'cargo kani', and we shouldn't alter arguments.
