@@ -223,25 +223,6 @@ impl<'test> TestCx<'test> {
         } else if proc_res.stdout.contains("GILLIAN FAILURE") {
             self.fatal_proc_rec("Gillian failed in an entirely unexpected way", &proc_res)
         } else {
-            let unhandled_ireps = {
-                const TXT: &str = "UNHANDLED_IREP:";
-                let mut ui = vec![];
-                for line in proc_res.stdout.lines() {
-                    line.find(TXT).iter().for_each(|i| ui.push(line[i + TXT.len()..].trim()))
-                }
-                ui.dedup();
-                ui
-            };
-            if !unhandled_ireps.is_empty() {
-                self.fatal_proc_rec(
-                    &format!(
-                        "test failed: compilation failed because of unhandled Irep: {}",
-                        unhandled_ireps.join(", ")
-                    ),
-                    &proc_res,
-                )
-            }
-
             let unhandled_features = {
                 const TXT: &str = "Unhandled features: ";
                 let mut uf = vec![];

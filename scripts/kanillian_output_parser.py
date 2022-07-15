@@ -5,24 +5,22 @@ import sys
 from colorama import Fore, Style
 
 # STATUS CODES:
-# 0b000000 = 0 : Success
-# 0b000001 = 1: Python Error
-# 0b000010 = 2 : Ended in Assert error or execution failure
-# 0b000100 = 4 : Ended because of unhandled assert
-# 0b001000 = 8: Ended with unknown status
+# 0b00000 = 0 : Success
+# 0b00001 = 1: Python Error
+# 0b00010 = 2 : Ended in Assert error or execution failure
+# 0b00100 = 4 : Ended because of unhandled assert
+# 0b01000 = 8: Ended with unknown status
 # Any combination of the 3 aboves means that several of those happened
-# 0b010000 = 16 : Didn't compile - unhandled IREP
-# 0b100000 = 32 : Something else happened
+# 0b10000 = 16 : Something else happened
 
 
 class Status:
-    SUCCESS = 0b000000
-    PYTHON_ERROR = 0b000001
-    ASSERT_ERROR = 0b000010
-    UNHANDLED_GOTO = 0b000100
-    ENDED_UNKNOWN = 0b001000
-    UNHANDLED_IREP = 0b010000
-    SOMETHING_ELSE = 0b100000
+    SUCCESS = 0b00000
+    PYTHON_ERROR = 0b00001
+    ASSERT_ERROR = 0b00010
+    UNHANDLED_GOTO = 0b00100
+    ENDED_UNKNOWN = 0b01000
+    SOMETHING_ELSE = 0b10000
 
     _status = PYTHON_ERROR
 
@@ -126,21 +124,6 @@ HARNESS = "Harness: "
 INDENT = " " * (len(HARNESS) - 2) + "- "
 
 print(f"{HARNESS}{args.harness}")
-
-# First, check for an unhandled irep
-start_string = 'UNHANDLED IREP:'
-found_unhandled = False
-
-for line in content.split("\n"):
-    index = line.find(start_string)
-    if index != -1:
-        found_unhandled = True
-        feature = line[index + len(start_string):].strip()
-        print(f"{INDENT}{colored_text(Fore.YELLOW, 'UNHANDLED_IREP:')} {feature}")
-        break
-
-if found_unhandled:
-    Status().unhandled_goto().exit()
 
 # Otherwise, check for the results in JSON form, and report that
 start_string = '===JSON RESULTS===\n'
