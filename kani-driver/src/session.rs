@@ -23,6 +23,9 @@ pub struct KaniSession {
     /// The location we found 'cbmc_json_parser.py'
     pub cbmc_json_parser_py: PathBuf,
 
+    /// The location we found 'kanillian_output_parser.py'
+    pub kanillian_output_parser_py: PathBuf,
+
     /// The location we found our pre-built libraries
     pub kani_rlib: Option<PathBuf>,
 
@@ -50,6 +53,7 @@ impl KaniSession {
             kani_lib_c: install.kani_lib_c()?,
             kani_c_stubs: install.kani_c_stubs()?,
             cbmc_json_parser_py: install.cbmc_json_parser_py()?,
+            kanillian_output_parser_py: install.kanillian_output_parser_py()?,
             kani_rlib: install.kani_rlib()?,
             temporaries: RefCell::new(vec![]),
         })
@@ -194,6 +198,10 @@ impl InstallType {
 
     pub fn cbmc_json_parser_py(&self) -> Result<PathBuf> {
         self.base_path_with("scripts/cbmc_json_parser.py")
+    }
+
+    pub fn kanillian_output_parser_py(&self) -> Result<PathBuf> {
+        self.base_path_with("scripts/kanillian_output_parser.py")
     }
 
     pub fn kani_rlib(&self) -> Result<Option<PathBuf>> {

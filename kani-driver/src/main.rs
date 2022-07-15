@@ -146,14 +146,36 @@ fn kanillian_main() -> Result<()> {
     let metadata = ctx.collect_kani_metadata(&[outputs.metadata])?;
     let harnesses = ctx.determine_targets(&metadata)?;
     let kstats_file = util::alter_extension(&args.input, "stats.json");
-    for harness in harnesses {
-        let gil_file = util::alter_extension(&args.input, &format!("{}.gil", harness.pretty_name));
-        ctx.call_kanillian(
-            &outputs.symtab,
-            harness.mangled_name,
-            Some(&gil_file),
-            Some(&kstats_file),
-        )?;
+    let mut temps = ctx.temporaries.borrow_mut();
+    temps.push(kstats_file.clone());
+    let mut first_time = true;
+    let mut end_in_error = false;
+    for harness in &harnesses {
+        // Bit of a hack, but since we're compiling many times,
+        // we don't want to report the statistics on each call,
+        // we want to report only on the first call.
+        let kstats_file: Option<&Path> = if first_time {
+            first_time = false;
+            Some(&kstats_file)
+        } else {
+            None
+        };
+        let stdout_file =
+            util::alter_extension(&args.input, &format!("{}.stdout", harness.pretty_name));
+        temps.push(stdout_file.clone());
+        let status =
+            ctx.call_kanillian_wpst(&outputs.symtab, harness, &stdout_file, kstats_file)?;
+        if let VerificationStatus::Failure = status {
+            end_in_error = true
+        }
+    }
+
+    if end_in_error {
+        // We manually drop, because drop will not happen after exiting the program,
+        // and dropping clears the temp files
+        drop(temps);
+        drop(ctx);
+        std::process::exit(1);
     }
 
     Ok(())

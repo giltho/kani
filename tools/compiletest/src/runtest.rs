@@ -7,7 +7,7 @@
 
 use crate::common::KaniFailStep;
 use crate::common::{output_base_dir, output_base_name};
-use crate::common::{CargoKani, Expected, Kani, KaniFixme, Stub};
+use crate::common::{CargoKani, Expected, Kani, KaniFixme, Kanillian, Stub};
 use crate::common::{Config, TestPaths};
 use crate::header::TestProps;
 use crate::json;
@@ -60,6 +60,7 @@ impl<'test> TestCx<'test> {
     /// revisions, exactly once, with revision == None).
     fn run_revision(&self) {
         match self.config.mode {
+            Kanillian => self.run_kanillian_test(),
             Kani => self.run_kani_test(),
             KaniFixme => self.run_kani_test(),
             CargoKani => self.run_cargo_kani_test(),
@@ -177,9 +178,9 @@ impl<'test> TestCx<'test> {
                 self.fatal_proc_rec("test failed: expected check failure, got success", &proc_res);
             }
         } else if !proc_res.status.success() {
-                self.fatal_proc_rec("test failed: expected check success, got failure", &proc_res);
-            }
+            self.fatal_proc_rec("test failed: expected check success, got failure", &proc_res);
         }
+    }
 
     /// Runs `kani-compiler` on the test file specified by `self.testpaths.file`. An
     /// error message is printed to stdout if the codegen result is not
@@ -202,6 +203,72 @@ impl<'test> TestCx<'test> {
             }
         } else if !proc_res.status.success() {
             self.fatal_proc_rec("test failed: expected codegen success, got failure", &proc_res);
+        }
+    }
+
+    fn kanillian_wpst(&self) {
+        let proc_res = self.run_kanillian();
+        if proc_res.status.success() {
+            if let Some(KaniFailStep::Verify) = self.props.kani_panic_step {
+                self.fatal_proc_rec(
+                    "test failed: expected verification failure, got success",
+                    &proc_res,
+                );
+            }
+        } else if proc_res.stdout.contains("PYTHON ERROR") {
+            self.fatal_proc_rec(
+                "test failed: python script was unable to parse Kanillian output",
+                &proc_res,
+            )
+        } else if proc_res.stdout.contains("GILLIAN FAILURE") {
+            self.fatal_proc_rec("Gillian failed in an entirely unexpected way", &proc_res)
+        } else {
+            let unhandled_ireps = {
+                const TXT: &str = "UNHANDLED_IREP:";
+                let mut ui = vec![];
+                for line in proc_res.stdout.lines() {
+                    line.find(TXT).iter().for_each(|i| ui.push(line[i + TXT.len()..].trim()))
+                }
+                ui.dedup();
+                ui
+            };
+            if !unhandled_ireps.is_empty() {
+                self.fatal_proc_rec(
+                    &format!(
+                        "test failed: compilation failed because of unhandled Irep: {}",
+                        unhandled_ireps.join(", ")
+                    ),
+                    &proc_res,
+                )
+            }
+
+            let unhandled_features = {
+                const TXT: &str = "Unhandled features: ";
+                let mut uf = vec![];
+                for line in proc_res.stdout.lines() {
+                    line.find(TXT).iter().for_each(|i| {
+                        for feature in line[i + TXT.len()..].split(',').map(|x| x.trim()) {
+                            uf.push(feature)
+                        }
+                    })
+                }
+                uf.dedup();
+                uf
+            };
+            if !unhandled_features.is_empty() {
+                self.fatal_proc_rec(
+                    &format!(
+                        "test failed: execution failed because of unhandled features: {}",
+                        unhandled_features.join(", ")
+                    ),
+                    &proc_res,
+                )
+            }
+            if proc_res.stdout.contains("Unknown cases:") {
+                self.fatal_proc_rec("Some unknown cases happened", &proc_res)
+            }
+            if proc_res.stdout.contains("Execution failures: ") {
+                self.fatal_proc_rec("Some assertions did not pass", &proc_res);
             }
         }
     }
@@ -242,10 +309,10 @@ impl<'test> TestCx<'test> {
                     );
                 }
             } else if !proc_res.status.success() {
-                    self.fatal_proc_rec(
-                        "test failed: expected verification success, got failure",
-                        &proc_res,
-                    );
+                self.fatal_proc_rec(
+                    "test failed: expected verification success, got failure",
+                    &proc_res,
+                );
             }
         }
     }
@@ -263,6 +330,21 @@ impl<'test> TestCx<'test> {
             }
             Some(KaniFailStep::Verify) | None => {
                 self.verify();
+            }
+        }
+    }
+
+    /// Same as for kani, but with the Gillian backend
+    fn run_kanillian_test(&self) {
+        match self.props.kani_panic_step {
+            Some(KaniFailStep::Check) => {
+                self.check();
+            }
+            Some(KaniFailStep::Codegen) => {
+                self.codegen();
+            }
+            Some(KaniFailStep::Verify) | None => {
+                self.kanillian_wpst();
             }
         }
     }
@@ -305,7 +387,7 @@ impl<'test> TestCx<'test> {
     }
 
     /// Common method used to run Kani on a single file test.
-    fn run_kani(&self) -> ProcRes {
+    fn run_kani_maybe_gillian(&self, gillian_mode: bool) -> ProcRes {
         // Other modes call self.compile_test(...). However, we cannot call it here for two reasons:
         // 1. It calls rustc instead of Kani
         // 2. It may pass some options that do not make sense for Kani
@@ -318,6 +400,11 @@ impl<'test> TestCx<'test> {
         if !self.props.compile_flags.is_empty() {
             kani.env("RUSTFLAGS", self.props.compile_flags.join(" "));
         }
+
+        if gillian_mode {
+            kani.arg("--gillian");
+        }
+
         // Pass the test path along with Kani and CBMC flags parsed from comments at the top of the test file.
         kani.arg(&self.testpaths.file).args(&self.props.kani_flags);
 
@@ -326,6 +413,14 @@ impl<'test> TestCx<'test> {
         }
 
         self.compose_and_run(kani)
+    }
+
+    fn run_kanillian(&self) -> ProcRes {
+        self.run_kani_maybe_gillian(true)
+    }
+
+    fn run_kani(&self) -> ProcRes {
+        self.run_kani_maybe_gillian(false)
     }
 
     /// Runs Kani on the test file specified by `self.testpaths.file`. An error

@@ -14,6 +14,7 @@ use test::ColorConfig;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Mode {
+    Kanillian,
     Kani,
     KaniFixme,
     CargoKani,
@@ -30,6 +31,7 @@ impl FromStr for Mode {
             "cargo-kani" => Ok(CargoKani),
             "expected" => Ok(Expected),
             "stub-tests" => Ok(Stub),
+            "kanillian" => Ok(Kanillian),
             _ => Err(()),
         }
     }
@@ -43,6 +45,7 @@ impl fmt::Display for Mode {
             CargoKani => "cargo-kani",
             Expected => "expected",
             Stub => "stub-tests",
+            Kanillian => "kanillian",
         };
         fmt::Display::fmt(s, f)
     }

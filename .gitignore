@@ -90,3 +90,4 @@ tests/kani-multicrate/type-mismatch/mismatch/target
 # Gillian-related stuff
 .gillian
 file.log
+*.stdout
