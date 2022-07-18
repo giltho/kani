@@ -14,6 +14,18 @@ from colorama import Fore, Style
 # 0b10000 = 16 : Something else happened
 
 
+exec_stats = {
+    "successes": 0,
+    "verification_failures": 0,
+    "unhandled_failures": {},
+    "unknown": 0,
+    "gillian_failures": 0,
+}
+
+stats_file = {
+    "file": None
+}
+
 class Status:
     SUCCESS = 0b00000
     PYTHON_ERROR = 0b00001
@@ -45,6 +57,9 @@ class Status:
         return self
 
     def exit(self):
+
+        with open(stats_file["file"], 'w') as f:
+            json.dump(exec_stats, f)
         exit(self._status)
 
 
@@ -94,20 +109,29 @@ def colored_text(color, text):
 
 def one_wpst_status(json):
     if json[0] == "RSucc":
+        exec_stats["successes"] += 1
         return Result.success()
     if json[0] == "RFail":
         first_error = json[1]["errors"][0]
         if first_error[0] == "EState":
+            exec_stats["verification_failures"] += 1
             return Result.assert_failed()
         elif first_error[0] == "EFailReached":
             fail_code = first_error[1]["fail_code"]
             if fail_code == "unhandled":
                 feature = first_error[1]["fail_params"][0][1][1]
+                if feature in exec_stats["unhandled_failures"]:
+                    exec_stats["unhandled_failures"][feature] += 1
+                else:
+                    exec_stats["unhandled_failures"][feature] = 1
                 return Result.unhandled(feature)
             else:
+                exec_stats["verification_failures"] += 1
                 return Result.assert_failed()
         else:
+            exec_stats["unknown"] += 1
             return Result.unknown()
+    exec_stats["unknown"] += 1
     return Result.unknown()
 
 
@@ -115,7 +139,10 @@ parser = argparse.ArgumentParser(description='Parse the result of a Kanillian ru
 parser.add_argument('file', metavar="FILE", type=Path,
                     help='File that contains the stdout of the Kanillian run')
 parser.add_argument('harness', metavar='HARNESS', type=str, help='Pretty name for the harness')
+parser.add_argument('--stats', metavar="STATS_FILE", type=Path, help='File to write the exec stats in')
 args = parser.parse_args()
+
+stats_file["file"] = args.stats
 
 with open(args.file, 'r') as f:
     content = f.read()
@@ -160,4 +187,5 @@ if start_string_index != -1:
 
 
 print(f'{colored_text(Fore.RED, "GILLIAN FAILURE")}')
+exec_stats["gillian_failures"] += 1
 Status().something_else().exit()

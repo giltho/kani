@@ -3,35 +3,12 @@
 
 use anyhow::{bail, Context, Result};
 use kani_metadata::HarnessMetadata;
-
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::call_cbmc::VerificationStatus;
 use crate::session::KaniSession;
-
-// #[derive(Debug)]
-// pub enum KanillianWPSTStatus {
-//     Success,
-//     AssertFailed,
-//     UnhandledAtCompilation(String),
-//     UnhandledAtExec(String),
-//     OtherFailure,
-// }
-
-// impl KanillianWPSTStatus {
-//     fn parse(str: &str) -> Self {
-//         match str {
-//             "Success" => Self::Success,
-//             "AssertFailed" => Self::AssertFailed,
-//             _ => match str.strip_prefix("UnhandledAtExec::") {
-//                 Some(feature) => Self::UnhandledAtExec(feature.to_owned()),
-//                 None => Self::OtherFailure,
-//             },
-//         }
-//     }
-// }
 
 const WPST: &str = "wpst";
 
@@ -53,9 +30,19 @@ impl KaniSession {
             .map(|x| x.code())
     }
 
-    fn wpst_status_from_file(&self, file: &Path, harness: &str) -> Result<VerificationStatus> {
-        let args: Vec<OsString> =
+    fn wpst_status_from_file(
+        &self,
+        file: &Path,
+        harness: &str,
+        exec_stats: Option<PathBuf>,
+    ) -> Result<VerificationStatus> {
+        let mut args: Vec<OsString> =
             vec![self.kanillian_output_parser_py.clone().into(), file.into(), harness.into()];
+
+        if let Some(stats) = &exec_stats {
+            args.push("--stats".into());
+            args.push(stats.clone().into_os_string());
+        }
 
         let mut cmd = Command::new("python3");
         cmd.args(args);
@@ -79,7 +66,8 @@ impl KaniSession {
         input: &PathBuf,
         harness: &HarnessMetadata,
         output: &Path,
-        kstats_file: Option<&Path>,
+        compile_stats: Option<PathBuf>,
+        exec_stats: Option<PathBuf>,
     ) -> Result<VerificationStatus> {
         let mut args: Vec<OsString> = vec![
             WPST.into(),
@@ -90,9 +78,9 @@ impl KaniSession {
             "disabled".into(),
             "--json-ui".into(),
         ];
-        if let Some(kstats_file) = kstats_file {
+        if let Some(kstats_file) = &compile_stats {
             args.push("--kstats".into());
-            args.push(kstats_file.to_owned().into_os_string());
+            args.push(kstats_file.clone().into_os_string());
         }
 
         let mut cmd = Command::new("kanillian");
@@ -100,6 +88,6 @@ impl KaniSession {
 
         self.run_redirect(cmd, output)?;
 
-        self.wpst_status_from_file(output, &harness.pretty_name)
+        self.wpst_status_from_file(output, &harness.pretty_name, exec_stats)
     }
 }
