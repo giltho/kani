@@ -66,12 +66,15 @@ impl KaniSession {
         input: &PathBuf,
         harness: &HarnessMetadata,
         output: &Path,
+        gil_program: &Path,
         compile_stats: Option<PathBuf>,
         exec_stats: Option<PathBuf>,
     ) -> Result<VerificationStatus> {
         let mut args: Vec<OsString> = vec![
             WPST.into(),
             input.into(),
+            "-o".into(),
+            gil_program.clone().into(),
             "--harness".into(),
             harness.mangled_name.clone().into(),
             "-l".into(),

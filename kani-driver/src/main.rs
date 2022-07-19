@@ -161,6 +161,8 @@ fn kanillian_main() -> Result<()> {
         };
         let exec_stats =
             util::alter_extension(&args.input, &format!("{}.exec_stats.json", harness.pretty_name));
+        let gil = util::alter_extension(&args.input, &format!("{}.gil", harness.pretty_name));
+        temps.push(gil.clone());
         let stdout_file =
             util::alter_extension(&args.input, &format!("{}.stdout", harness.pretty_name));
         temps.push(stdout_file.clone());
@@ -168,6 +170,7 @@ fn kanillian_main() -> Result<()> {
             &outputs.symtab,
             harness,
             &stdout_file,
+            &gil,
             compile_stats,
             Some(exec_stats),
         )?;

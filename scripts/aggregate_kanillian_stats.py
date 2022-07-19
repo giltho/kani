@@ -48,4 +48,4 @@ for root, subdirs, files in os.walk(args.path):
 
 
 with open("final_stats.json", "w") as f:
-    json.dump(stats, f)
+    json.dump(stats, f, indent=2)
